@@ -169,6 +169,36 @@ std::vector<Pair> GetRandomPairs(int n, int x)
     return randomPairs;
 }
 
+// DCTCP ECN:
+static uint32_t g_ecnMarkCount = 0;
+std::ofstream ecnFile;
+
+// void EcnMarkTracer(Ptr<const QueueDiscItem> item, const char* reason)
+// {
+//     g_ecnMarkCount++;
+//     // Optionally, you can print/log info about the item or reason
+// }
+
+void EcnMarkTracer(Ptr<const QueueDiscItem> item, const char* reason) {
+    double now = Simulator::Now().GetSeconds();
+    static uint32_t ecnMarkCount = 0; // Or make this global if you want to access elsewhere
+    ecnMarkCount++;
+    ecnFile << now << "\t" << ecnMarkCount << std::endl;
+    std::cout << "[ECN MARK] Time: " << now << "s, ECN Mark Count: " << ecnMarkCount << " Reason: " << reason << std::endl;
+}
+
+void PeriodicEcnLogger(double interval) {
+    static uint32_t lastMarkCount = 0;
+    double now = Simulator::Now().GetSeconds();
+    uint32_t diff = g_ecnMarkCount - lastMarkCount;
+    ecnFile << now << "\t" << g_ecnMarkCount << "\t" << diff << std::endl;
+    lastMarkCount = g_ecnMarkCount;
+    Simulator::Schedule(Seconds(interval), &PeriodicEcnLogger, interval);
+}
+
+
+
+//
 
 /*
 k                           Fat-tree switch port count (e.g., 4)
@@ -207,7 +237,11 @@ void runGit(int k, std::string p2p_DataRate, std::string p2p_Delay, int mode, ui
     /// uint32_t threshold_k = 250;   ////// needs to be checked
 
     if (protocolName == "TcpDctcp"){
-        threshold_k = 250;
+        /*
+        DCTCP is designed to react to early signs of congestion, so we want ECN marking to start when the queue is still shallow. 
+        This enables DCTCP to keep queue occupancy low and avoid bufferbloat.
+        */
+        threshold_k = 20;
     }
     else
     {
@@ -245,8 +279,8 @@ void runGit(int k, std::string p2p_DataRate, std::string p2p_Delay, int mode, ui
     // NEW
     Config::SetDefault("ns3::RedQueueDisc::MeanPktSize", UintegerValue(app_packet_size));
 
-    // Triumph and Scorpion switches used in DCTCP Paper have 4 MB of buffer
-    // If every packet is 1500 bytes, 2666 packets can be stored in 4 MB
+    // Why 2666? The If every packet is 1500 bytes (max) and we want 4MB max, it means up to 2666p.
+    
     Config::SetDefault("ns3::RedQueueDisc::MaxSize", QueueSizeValue(QueueSize("2666p")));
     // DCTCP tracks instantaneous queue length only; so set QW = 1
     Config::SetDefault("ns3::RedQueueDisc::QW", DoubleValue(1));
@@ -317,6 +351,13 @@ void runGit(int k, std::string p2p_DataRate, std::string p2p_Delay, int mode, ui
                 Simulator::Schedule(Seconds(2.0), &PeriodicQueueLogger, queueDisc0, 0, link_index, 0.05); // logs every 0.05s
                 Simulator::Schedule(Seconds(2.0), &PeriodicQueueLogger, queueDisc1, 1, link_index, 0.05); // logs every 0.05s
 
+                if (protocolName == "TcpDctcp") {
+                    // queueDisc1->TraceConnectWithoutContext("Mark", MakeCallback(&EcnMarkTracer));
+                    // Simulator::Schedule(Seconds(2.0), &PeriodicEcnLogger, queueDisc1, 0.05); // log every 0.05s (change interval as needed)
+                    queueDisc1->TraceConnectWithoutContext("Mark", MakeCallback(&EcnMarkTracer));
+                    // Simulator::Schedule(Seconds(2.0), &PeriodicEcnLogger, 0.05);
+                }
+
                 link_index++;
             }
         }
@@ -353,6 +394,13 @@ void runGit(int k, std::string p2p_DataRate, std::string p2p_Delay, int mode, ui
                 Simulator::Schedule(Seconds(2.0), &PeriodicQueueLogger, queueDisc0, 0, link_index, 0.05); // logs every 0.05s
                 Simulator::Schedule(Seconds(2.0), &PeriodicQueueLogger, queueDisc1, 1, link_index, 0.05); // logs every 0.05s
 
+                if (protocolName == "TcpDctcp") {
+                    // queueDisc1->TraceConnectWithoutContext("Mark", MakeCallback(&EcnMarkTracer));
+                    // Simulator::Schedule(Seconds(2.0), &PeriodicEcnLogger, queueDisc1, 0.05); // log every 0.05s (change interval as needed)
+                    queueDisc1->TraceConnectWithoutContext("Mark", MakeCallback(&EcnMarkTracer));
+                    // Simulator::Schedule(Seconds(2.0), &PeriodicEcnLogger, 0.05);
+                }
+
                 link_index++;
             }
         }
@@ -387,6 +435,13 @@ void runGit(int k, std::string p2p_DataRate, std::string p2p_Delay, int mode, ui
 
                 Simulator::Schedule(Seconds(2.0), &PeriodicQueueLogger, queueDisc0, 0, link_index, 0.05); // logs every 0.05s
                 Simulator::Schedule(Seconds(2.0), &PeriodicQueueLogger, queueDisc1, 1, link_index, 0.05); // logs every 0.05s
+
+                if (protocolName == "TcpDctcp") {
+                    // queueDisc1->TraceConnectWithoutContext("Mark", MakeCallback(&EcnMarkTracer));
+                    // Simulator::Schedule(Seconds(2.0), &PeriodicEcnLogger, queueDisc1, 0.05); // log every 0.05s (change interval as needed)
+                    queueDisc1->TraceConnectWithoutContext("Mark", MakeCallback(&EcnMarkTracer));
+                    // Simulator::Schedule(Seconds(2.0), &PeriodicEcnLogger, 0.05);
+                }
 
                 link_index++;
             }
@@ -678,6 +733,10 @@ int main(int argc, char *argv[])
     queueFile.open("scratch/" + protocolName + "_queue_size.txt", std::ios::out);
     cwndFile.open("scratch/" + protocolName + "_cwnd.txt", std::ios::out);
 
+    if (protocolName == "TcpDctcp") {
+        ecnFile.open("scratch/" + protocolName + "_ecn.txt", std::ios::out);
+    }
+
     // runGit(4, "1Gbps", "10us", 1, 100, 0, 15, "100Mbps", 1000);
     // runGit(4, "1Gbps", "10us", 1, 120, 0, 15, "250Mbps", 1000);          // EXCEL
     // runGit(4, "1Gbps", "10us", 1, 120, 0, 30, "300Mbps", 1000);
@@ -700,11 +759,13 @@ int main(int argc, char *argv[])
 
     // runGit(4, "40Mbps", "10us", 0, 200, 0, 30, "400Mbps", 700);  // Also good
 
-    runGit(4, "50Mbps", "10us", 1, 200, 0, 30, "500Mbps", 800); // GOOD!!!!!!!!
+    // runGit(4, "50Mbps", "10us", 1, 200, 0, 30, "500Mbps", 800); // GOOD!!!!!!!!
 
 
                                         /* 2 */
-    // runGit(4, "50Mbps", "10us", 2, 200, 0, 30, "500Mbps", 700); // Not good for BBR
+    // runGit(4, "1Mbps", "10us", 2, 400, 0, 30, "1Gbps", 700); // GOOD!!!
+    // runGit(4, "1Mbps", "10us", 2, 400, 0, 30, "1Gbps", 1500); // Huge
+    runGit(4, "1Mbps", "10us", 2, 400, 0, 30, "1Gbps", 70); // a lot of time. check if finish.
 
     // Small    61-70
     // Big      1400-1500
@@ -714,6 +775,10 @@ int main(int argc, char *argv[])
     rttFile.close();
     queueFile.close();
     cwndFile.close();
+
+    if (protocolName == "TcpDctcp") {
+        ecnFile.close();
+    }
 
     std::cout << std::endl;
 
