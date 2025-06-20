@@ -56,6 +56,7 @@ void SetTcpCongestionControl(int protocol)
 using Pair = std::pair<int, int>;
 
 bool traceQueue = false;
+int queueThreshold = 5;
 
 //
 
@@ -78,6 +79,11 @@ std::ofstream queueFile;
 // queueFile("scratch/queue_size.txt", std::ios::out);
 void QueueSizeTracer(uint32_t oldValue, uint32_t newValue)
 {
+    uint32_t diff = (newValue > oldValue) ? (newValue - oldValue) : (oldValue - newValue);
+    if (diff < queueThreshold){
+        return;
+    }
+
     double now = Simulator::Now().GetSeconds();
     queueFile << now << "\t" << newValue << std::endl;
     std::cout << "[QUEUE SIZE] Time: " << now 
@@ -85,6 +91,13 @@ void QueueSizeTracer(uint32_t oldValue, uint32_t newValue)
               << oldValue << " → " << newValue << " packets" << std::endl;
 }
 
+void PeriodicQueueLogger(Ptr<QueueDisc> queue, int index, int queueNum, double interval) {
+    double now = Simulator::Now().GetSeconds();
+    uint32_t qSize = queue->GetCurrentSize().GetValue();
+    queueFile << index << "\t" << queueNum << "\t" << now << "\t" << qSize << std::endl;
+    // Schedule next poll
+    Simulator::Schedule(Seconds(interval), &PeriodicQueueLogger, queue, index, queueNum, interval);
+}
 //
 
 std::ofstream cwndFile;
@@ -272,7 +285,7 @@ void runGit(int k, std::string p2p_DataRate, std::string p2p_Delay, int mode, ui
     internet.Install(edgeSwitches);
     internet.Install(hosts);
 
-
+    int link_index = 0;
     // Core to Aggregation Links
     for (uint32_t pod = 0; pod < numPods; ++pod) {
         for (uint32_t i = 0; i < k / 2; ++i) {
@@ -281,12 +294,35 @@ void runGit(int k, std::string p2p_DataRate, std::string p2p_Delay, int mode, ui
                 uint32_t aggIndex = pod * (k / 2) + i;
                 NetDeviceContainer link = p2p.Install(coreSwitches.Get(coreIndex), aggSwitches.Get(aggIndex));
                 link_vec.push_back(link);
-                tchRed1.Install(link.Get(1));
-                tchRed1.Install(link.Get(0));
+
+                // tchRed1.Install(link.Get(1));
+                // tchRed1.Install(link.Get(0));
+
+                // QueueDiscContainer q0 = tchRed1.Install(link.Get(0));
+                // QueueDiscContainer q1 = tchRed1.Install(link.Get(1));
+
+                // if (traceQueue)
+                // {
+                //     Ptr<QueueDisc> disc0 = q0.Get(0);
+                //     disc0->TraceConnectWithoutContext("PacketsInQueue", MakeCallback(&QueueSizeTracer));
+
+                //     Ptr<QueueDisc> disc1 = q1.Get(0);
+                //     disc1->TraceConnectWithoutContext("PacketsInQueue", MakeCallback(&QueueSizeTracer));
+                // }
+
+
+                Ptr<QueueDisc> queueDisc1 = tchRed1.Install(link.Get(1)).Get(0);
+                Ptr<QueueDisc> queueDisc0 = tchRed1.Install(link.Get(0)).Get(0);
+
+                Simulator::Schedule(Seconds(2.0), &PeriodicQueueLogger, queueDisc0, 0, link_index, 0.05); // logs every 0.05s
+                Simulator::Schedule(Seconds(2.0), &PeriodicQueueLogger, queueDisc1, 1, link_index, 0.05); // logs every 0.05s
+
+                link_index++;
             }
         }
     }
 
+    link_index = 0;
     // Aggregation to Edge Links
     for (uint32_t pod = 0; pod < numPods; ++pod) {
         for (uint32_t i = 0; i < k / 2; ++i) {
@@ -295,12 +331,34 @@ void runGit(int k, std::string p2p_DataRate, std::string p2p_Delay, int mode, ui
                 uint32_t edgeIndex = pod * (k / 2) + j;
                 NetDeviceContainer link = p2p.Install(aggSwitches.Get(aggIndex), edgeSwitches.Get(edgeIndex));
                 link_vec.push_back(link);
-                tchRed1.Install(link.Get(1));
-                tchRed1.Install(link.Get(0));
+                // tchRed1.Install(link.Get(1));
+                // tchRed1.Install(link.Get(0));
+
+                // QueueDiscContainer q0 = tchRed1.Install(link.Get(0));
+                // QueueDiscContainer q1 = tchRed1.Install(link.Get(1));
+
+                // if (traceQueue)
+                // {
+                //     Ptr<QueueDisc> disc0 = q0.Get(0);
+                //     disc0->TraceConnectWithoutContext("PacketsInQueue", MakeCallback(&QueueSizeTracer));
+
+                //     Ptr<QueueDisc> disc1 = q1.Get(0);
+                //     disc1->TraceConnectWithoutContext("PacketsInQueue", MakeCallback(&QueueSizeTracer));
+                // }
+
+
+                Ptr<QueueDisc> queueDisc1 = tchRed1.Install(link.Get(1)).Get(0);
+                Ptr<QueueDisc> queueDisc0 = tchRed1.Install(link.Get(0)).Get(0);
+
+                Simulator::Schedule(Seconds(2.0), &PeriodicQueueLogger, queueDisc0, 0, link_index, 0.05); // logs every 0.05s
+                Simulator::Schedule(Seconds(2.0), &PeriodicQueueLogger, queueDisc1, 1, link_index, 0.05); // logs every 0.05s
+
+                link_index++;
             }
         }
     }
 
+    link_index = 0;
     // Edge to Host Links
     for (uint32_t pod = 0; pod < numPods; ++pod) {
         for (uint32_t edgeIndex = pod * (k / 2); edgeIndex < (pod + 1) * (k / 2); ++edgeIndex) {
@@ -308,8 +366,29 @@ void runGit(int k, std::string p2p_DataRate, std::string p2p_Delay, int mode, ui
                 uint32_t hostIndex = edgeIndex * (k / 2) + i;
                 NetDeviceContainer link = p2p.Install(edgeSwitches.Get(edgeIndex), hosts.Get(hostIndex));
                 link_vec.push_back(link);
-                tchRed1.Install(link.Get(1));
-                tchRed1.Install(link.Get(0));
+                // tchRed1.Install(link.Get(1));
+                // tchRed1.Install(link.Get(0));
+
+                // QueueDiscContainer q0 = tchRed1.Install(link.Get(0));
+                // QueueDiscContainer q1 = tchRed1.Install(link.Get(1));
+
+                // if (traceQueue)
+                // {
+                //     Ptr<QueueDisc> disc0 = q0.Get(0);
+                //     disc0->TraceConnectWithoutContext("PacketsInQueue", MakeCallback(&QueueSizeTracer));
+
+                //     Ptr<QueueDisc> disc1 = q1.Get(0);
+                //     disc1->TraceConnectWithoutContext("PacketsInQueue", MakeCallback(&QueueSizeTracer));
+                // }
+
+
+                Ptr<QueueDisc> queueDisc1 = tchRed1.Install(link.Get(1)).Get(0);
+                Ptr<QueueDisc> queueDisc0 = tchRed1.Install(link.Get(0)).Get(0);
+
+                Simulator::Schedule(Seconds(2.0), &PeriodicQueueLogger, queueDisc0, 0, link_index, 0.05); // logs every 0.05s
+                Simulator::Schedule(Seconds(2.0), &PeriodicQueueLogger, queueDisc1, 1, link_index, 0.05); // logs every 0.05s
+
+                link_index++;
             }
         }
     }
@@ -593,7 +672,7 @@ int main(int argc, char *argv[])
 
     SetTcpCongestionControl(protocolNumber);
 
-    // traceQueue = true;
+    traceQueue = true;
 
     rttFile.open("scratch/" + protocolName + "_rtt.txt", std::ios::out);
     queueFile.open("scratch/" + protocolName + "_queue_size.txt", std::ios::out);
@@ -613,21 +692,23 @@ int main(int argc, char *argv[])
     // runGit(4, "500Mbps", "10us", 1, 200, 0, 30, "500Mbps", 70); // מלא זמן
     // runGit(4, "1Gbps", "10us", 1, 200, 0, 15, "500Mbps", 700);   // אין גודש
     
-    // WOW!!!!
-    // runGit(4, "50Mbps", "10us", 1, 200, 0, 30, "500Mbps", 700); // GOOD!!!!!!!!
+                                        /* 1 */
+    // WOW!!!!                     0
+    // runGit(4, "50Mbps", "10us", 1, 200, 0, 30, "500Mbps", 800); // GOOD!!!!!!!!
     // runGit(4, "50Mbps", "10us", 1, 200, 0, 30, "500Mbps", 1500); // WOW
     // runGit(4, "50Mbps", "10us", 1, 200, 0, 30, "500Mbps", 70); // Lot of time but OK
 
     // runGit(4, "40Mbps", "10us", 0, 200, 0, 30, "400Mbps", 700);  // Also good
-    // runGit(4, "50Mbps", "10us", 0, 200, 0, 30, "500Mbps", 700);
-    // runGit(4, "50Mbps", "10us", 0, 200, 0, 30, "500Mbps", 1500); // WOW
-    // runGit(4, "50Mbps", "10us", 0, 200, 0, 30, "500Mbps", 70); // Lot of time but OK
 
-    runGit(4, "50Mbps", "10us", 0, 200, 0, 30, "500Mbps", 800);
+    runGit(4, "50Mbps", "10us", 1, 200, 0, 30, "500Mbps", 800); // GOOD!!!!!!!!
+
+
+                                        /* 2 */
+    // runGit(4, "50Mbps", "10us", 2, 200, 0, 30, "500Mbps", 700); // Not good for BBR
 
     // Small    61-70
     // Big      1400-1500
-    // Average 700
+    // Average 800
 
 
     rttFile.close();
