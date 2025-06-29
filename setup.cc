@@ -472,6 +472,7 @@ void runGit(int k, std::string p2p_DataRate, std::string p2p_Delay, int mode, ui
     uint16_t basePort = 50000; // Base port for applications
     std::vector<ApplicationContainer> sinkApps;
     std::vector<ApplicationContainer> sourceApps;
+    int reciever_number = 0;
 
     // All to last host
     if(mode == 0) 
@@ -533,7 +534,7 @@ void runGit(int k, std::string p2p_DataRate, std::string p2p_Delay, int mode, ui
     else if(mode == 1)
     {  
         // Random a server
-        int reciever_number = GetRandomNumber(hosts.GetN()-1);
+        reciever_number = GetRandomNumber(hosts.GetN()-1);
         Ptr<Node> receiver = hosts.Get(reciever_number);
 
         // Random clients.
@@ -704,11 +705,27 @@ void runGit(int k, std::string p2p_DataRate, std::string p2p_Delay, int mode, ui
         return;
     }
 
-    outputFile << "flows = " << num_of_flows << "   ";
-    outputFile << "Throughput = " <<AvgThroughput << " Kbps   ";
-    outputFile<< "Delay = " << Delay.GetSeconds()/ReceivedPackets<<"   ";
-    outputFile << "time = " << simulation_stop_time << "   ";
-    outputFile << "packet loss = " << packet_loss_rate <<"% " << "   K = " << k <<"    mode = "<< mode << std::endl;
+    /*
+    outputFile << "k = " << k << "\t";
+    outputFile << "p2p_DataRate = " << p2p_DataRate << "\t";
+    outputFile << "p2p_Delay = " << p2p_Delay << "\t";
+    outputFile << "mode = " << mode << "\t";
+    outputFile << "num_of_flows = " << num_of_flows << "\t";
+    outputFile << "flowmonitor_start_time = " << flowmonitor_start_time << "\t";
+    outputFile << "simulation_stop_time = " << simulation_stop_time << "\t";
+    outputFile << "app_data_rate = " << app_data_rate << "\t";
+    outputFile << "size = " << app_packet_size << "\n";*/
+
+    if (mode == 1){
+        outputFile << "Server number = " << reciever_number << "\t";    
+    }
+
+    outputFile << "flows = " << num_of_flows << "\t";
+    outputFile << "Throughput = " <<AvgThroughput << " Kbps\t";
+    outputFile << "Delay = " << Delay.GetSeconds()/ReceivedPackets << "\t";
+    outputFile << "time = " << simulation_stop_time << "\t";
+    outputFile << "packet loss = " << packet_loss_rate << std::endl;
+
     outputFile.close();
     //--------------here ends the writing into the output file implementation---------
 
@@ -750,22 +767,31 @@ int main(int argc, char *argv[])
     // runGit(4, "500Mbps", "10us", 1, 20, 0, 30, "500Mbps", 70);  // Seems good! Still need to check
     // runGit(4, "500Mbps", "10us", 1, 200, 0, 30, "500Mbps", 70); // מלא זמן
     // runGit(4, "1Gbps", "10us", 1, 200, 0, 15, "500Mbps", 700);   // אין גודש
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////////
+
+                                        /* 0 */
+    // WOW!!!!                     
+    // runGit(4, "50Mbps", "10us", 0, 200, 0, 30, "500Mbps", 800); // GOOD!!!!!!!!
+    // runGit(4, "50Mbps", "10us", 0, 200, 0, 30, "500Mbps", 1500); // WOW
+    // runGit(4, "50Mbps", "10us", 0, 200, 0, 30, "500Mbps", 70); // Lot of time but OK
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////////
     
                                         /* 1 */
-    // WOW!!!!                     0
+    // WOW!!!!                     
     // runGit(4, "50Mbps", "10us", 1, 200, 0, 30, "500Mbps", 800); // GOOD!!!!!!!!
     // runGit(4, "50Mbps", "10us", 1, 200, 0, 30, "500Mbps", 1500); // WOW
     // runGit(4, "50Mbps", "10us", 1, 200, 0, 30, "500Mbps", 70); // Lot of time but OK
 
     // runGit(4, "40Mbps", "10us", 0, 200, 0, 30, "400Mbps", 700);  // Also good
 
-    // runGit(4, "50Mbps", "10us", 1, 200, 0, 30, "500Mbps", 800); // GOOD!!!!!!!!
-
+    ///////////////////////////////////////////////////////////////////////////////////////////////////
 
                                         /* 2 */
-    // runGit(4, "1Mbps", "10us", 2, 400, 0, 30, "1Gbps", 700); // GOOD!!!
+    // runGit(4, "1Mbps", "10us", 2, 400, 0, 30, "1Gbps", 800); // GOOD!!!
     // runGit(4, "1Mbps", "10us", 2, 400, 0, 30, "1Gbps", 1500); // Huge
-    runGit(4, "1Mbps", "10us", 2, 400, 0, 30, "1Gbps", 70); // a lot of time. check if finish.
+    // runGit(4, "1Mbps", "10us", 2, 400, 0, 30, "1Gbps", 70); // a lot of time. check if finish.
 
     // Small    61-70
     // Big      1400-1500
