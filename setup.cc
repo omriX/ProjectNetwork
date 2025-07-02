@@ -249,6 +249,9 @@ void runGit(int k, std::string p2p_DataRate, std::string p2p_Delay, int mode, ui
         Config::SetDefault("ns3::TcpSocketState::MaxPacingRate", DataRateValue(DataRate("1Gb/s")));
     }
 
+    // Create randomness by change the packet size:
+    app_packet_size = app_packet_size - (rand() % 6);       // [size-5, size]
+
     //
     bool enableSwitchEcn;
     bool enable_swift;
@@ -474,10 +477,13 @@ void runGit(int k, std::string p2p_DataRate, std::string p2p_Delay, int mode, ui
     std::vector<ApplicationContainer> sourceApps;
     int reciever_number = 0;
 
+
     // All to last host
     if(mode == 0) 
     {
-        // int random_window_to_track  = GetRandomNumber(num_of_flows-1); 
+        Config::SetDefault("ns3::TcpSocket::SegmentSize", UintegerValue(app_packet_size));
+        Config::SetDefault("ns3::RedQueueDisc::MeanPktSize", UintegerValue(app_packet_size));
+
         for (uint32_t i = 0; i < num_of_flows; ++i) 
         {
             uint16_t port = basePort + i;
@@ -489,7 +495,6 @@ void runGit(int k, std::string p2p_DataRate, std::string p2p_Delay, int mode, ui
             Ptr<Node> sender = hosts.Get(i % hosts.GetN());
             Ptr<Node> receiver = hosts.Get((hosts.GetN() - 1) % hosts.GetN());
 
-
             // Install PacketSink on the receiver
             Address sinkAddress(InetSocketAddress(receiver->GetObject<Ipv4>()->GetAddress(1, 0).GetLocal(), port));
             PacketSinkHelper sinkHelper("ns3::TcpSocketFactory", sinkAddress);
@@ -498,38 +503,34 @@ void runGit(int k, std::string p2p_DataRate, std::string p2p_Delay, int mode, ui
             sinkApp.Stop(Seconds(simulation_stop_time));
             sinkApps.push_back(sinkApp);
 
-            //  Install on off on the sender
-            OnOffHelper onOffHelper("ns3::TcpSocketFactory", sinkAddress);
-            onOffHelper.SetAttribute("DataRate", StringValue(app_data_rate)); // Sending rate
-            onOffHelper.SetAttribute("PacketSize", UintegerValue(app_packet_size)); // Packet size (bytes)
-            ApplicationContainer sourceApp = onOffHelper.Install(sender);
+            // Install BulkSendApplication on the sender
+            BulkSendHelper bulkSender("ns3::TcpSocketFactory", sinkAddress);
+            bulkSender.SetAttribute("MaxBytes", UintegerValue(0)); // unlimited
+            ApplicationContainer sourceApp = bulkSender.Install(sender);
             sourceApp.Start(Seconds(2.0));
             sourceApp.Stop(Seconds(simulation_stop_time - 1));
 
-
             if (i == 0) { // Track the first window
-                Ptr<Application> app = sourceApp.Get(0); // Get the OnOffApplication instance
-                Ptr<OnOffApplication> onOffApp = DynamicCast<OnOffApplication>(app);
-                
-                if (onOffApp) {
-                    Simulator::Schedule(Seconds(2.01), [onOffApp]() {
-                        Ptr<Socket> onOffSocket = onOffApp->GetSocket();
-                        Ptr<TcpSocketBase> tcpSocketBase = DynamicCast<TcpSocketBase>(onOffSocket);
-                        
+                Ptr<Application> app = sourceApp.Get(0);
+                Ptr<BulkSendApplication> bulkApp = DynamicCast<BulkSendApplication>(app);
+                if (bulkApp) {
+                    Simulator::Schedule(Seconds(2.01), [bulkApp]() {
+                        Ptr<Socket> bulkSocket = bulkApp->GetSocket();
+                        Ptr<TcpSocketBase> tcpSocketBase = DynamicCast<TcpSocketBase>(bulkSocket);
                         if (tcpSocketBase) {
-                            std::cout << "[DEBUG] Attaching cwnd tracer to connection 0 (Sender Node " << onOffApp->GetNode()->GetId() << ")" << std::endl;
+                            std::cout << "[DEBUG] Attaching cwnd tracer to connection 0 (Sender Node " << bulkApp->GetNode()->GetId() << ")" << std::endl;
                             Track_Flow(tcpSocketBase);  
                         } else {
-                            std::cerr << "[ERROR] Could not cast OnOff socket to TcpSocketBase!" << std::endl;
+                            std::cerr << "[ERROR] Could not cast BulkSend socket to TcpSocketBase!" << std::endl;
                         }
                     });
                 } else {
-                    std::cerr << "[ERROR] Could not retrieve OnOffApplication instance!" << std::endl;
+                    std::cerr << "[ERROR] Could not retrieve BulkSendApplication instance!" << std::endl;
                 }
             }
         }
     }
-    
+
     // All to one random host
     else if(mode == 1)
     {  
@@ -553,38 +554,35 @@ void runGit(int k, std::string p2p_DataRate, std::string p2p_Delay, int mode, ui
             sinkApp.Stop(Seconds(simulation_stop_time));
             sinkApps.push_back(sinkApp);
 
-            // Install on off on the sender
-            OnOffHelper onOffHelper("ns3::TcpSocketFactory", sinkAddress);
-            onOffHelper.SetAttribute("DataRate", StringValue(app_data_rate)); // Sending rate
-            onOffHelper.SetAttribute("PacketSize", UintegerValue(app_packet_size)); // Packet size (bytes)
-            ApplicationContainer sourceApp = onOffHelper.Install(sender);
+            // Install BulkSendApplication on the sender
+            BulkSendHelper bulkSender("ns3::TcpSocketFactory", sinkAddress);
+            bulkSender.SetAttribute("MaxBytes", UintegerValue(0)); // unlimited
+            ApplicationContainer sourceApp = bulkSender.Install(sender);
             sourceApp.Start(Seconds(2.0));
             sourceApp.Stop(Seconds(simulation_stop_time-1));
 
-
             if (i == 1) { // Track the first window
-                Ptr<Application> app = sourceApp.Get(0); // Get the OnOffApplication instance
-                Ptr<OnOffApplication> onOffApp = DynamicCast<OnOffApplication>(app);
-                
-                if (onOffApp) {
-                    Simulator::Schedule(Seconds(2.01), [onOffApp]() {
-                        Ptr<Socket> onOffSocket = onOffApp->GetSocket();
-                        Ptr<TcpSocketBase> tcpSocketBase = DynamicCast<TcpSocketBase>(onOffSocket);
-                        
+                Ptr<Application> app = sourceApp.Get(0);
+                Ptr<BulkSendApplication> bulkApp = DynamicCast<BulkSendApplication>(app);
+                if (bulkApp) {
+                    Simulator::Schedule(Seconds(2.01), [bulkApp]() {
+                        Ptr<Socket> bulkSocket = bulkApp->GetSocket();
+                        Ptr<TcpSocketBase> tcpSocketBase = DynamicCast<TcpSocketBase>(bulkSocket);
                         if (tcpSocketBase) {
-                            std::cout << "[DEBUG] Attaching cwnd tracer to connection 0 (Sender Node " << onOffApp->GetNode()->GetId() << ")" << std::endl;
+                            std::cout << "[DEBUG] Attaching cwnd tracer to connection 0 (Sender Node " << bulkApp->GetNode()->GetId() << ")" << std::endl;
                             Track_Flow(tcpSocketBase);  
                         } else {
-                            std::cerr << "[ERROR] Could not cast OnOff socket to TcpSocketBase!" << std::endl;
+                            std::cerr << "[ERROR] Could not cast BulkSend socket to TcpSocketBase!" << std::endl;
                         }
                     });
                 } else {
-                    std::cerr << "[ERROR] Could not retrieve OnOffApplication instance!" << std::endl;
+                    std::cerr << "[ERROR] Could not retrieve BulkSendApplication instance!" << std::endl;
                 }
             }
         }
     }
-    
+
+    // Fully random pairs
     else if(mode == 2)
     {
         // Random pairs of hosts to communicate.
@@ -604,38 +602,33 @@ void runGit(int k, std::string p2p_DataRate, std::string p2p_Delay, int mode, ui
             sinkApp.Stop(Seconds(simulation_stop_time));
             sinkApps.push_back(sinkApp);
 
-            //  Install on off on the sender
-            OnOffHelper onOffHelper("ns3::TcpSocketFactory", sinkAddress);
-            onOffHelper.SetAttribute("DataRate", StringValue(app_data_rate)); // Sending rate
-            onOffHelper.SetAttribute("PacketSize", UintegerValue(app_packet_size)); // Packet size (bytes)
-            ApplicationContainer sourceApp = onOffHelper.Install(sender);
+            // Install BulkSendApplication on the sender
+            BulkSendHelper bulkSender("ns3::TcpSocketFactory", sinkAddress);
+            bulkSender.SetAttribute("MaxBytes", UintegerValue(0)); // unlimited
+            ApplicationContainer sourceApp = bulkSender.Install(sender);
             sourceApp.Start(Seconds(2.0));
             sourceApp.Stop(Seconds(simulation_stop_time -1));
 
-
             if (i == 0) { // Track the first window
-                Ptr<Application> app = sourceApp.Get(0); // Get the OnOffApplication instance
-                Ptr<OnOffApplication> onOffApp = DynamicCast<OnOffApplication>(app);
-                
-                if (onOffApp) {
-                    Simulator::Schedule(Seconds(2.01), [onOffApp]() {
-                        Ptr<Socket> onOffSocket = onOffApp->GetSocket();
-                        Ptr<TcpSocketBase> tcpSocketBase = DynamicCast<TcpSocketBase>(onOffSocket);
-                        
+                Ptr<Application> app = sourceApp.Get(0);
+                Ptr<BulkSendApplication> bulkApp = DynamicCast<BulkSendApplication>(app);
+                if (bulkApp) {
+                    Simulator::Schedule(Seconds(2.01), [bulkApp]() {
+                        Ptr<Socket> bulkSocket = bulkApp->GetSocket();
+                        Ptr<TcpSocketBase> tcpSocketBase = DynamicCast<TcpSocketBase>(bulkSocket);
                         if (tcpSocketBase) {
-                            std::cout << "[DEBUG] Attaching cwnd tracer to connection 0 (Sender Node " << onOffApp->GetNode()->GetId() << ")" << std::endl;
+                            std::cout << "[DEBUG] Attaching cwnd tracer to connection 0 (Sender Node " << bulkApp->GetNode()->GetId() << ")" << std::endl;
                             Track_Flow(tcpSocketBase);  
                         } else {
-                            std::cerr << "[ERROR] Could not cast OnOff socket to TcpSocketBase!" << std::endl;
+                            std::cerr << "[ERROR] Could not cast BulkSend socket to TcpSocketBase!" << std::endl;
                         }
                     });
                 } else {
-                    std::cerr << "[ERROR] Could not retrieve OnOffApplication instance!" << std::endl;
+                    std::cerr << "[ERROR] Could not retrieve BulkSendApplication instance!" << std::endl;
                 }
             }
         }
     }
-//-----------------------here ends the implementation of the connections between servers--------------------
 
    
 //--------------------------flow monitor---------------------------
@@ -720,11 +713,15 @@ void runGit(int k, std::string p2p_DataRate, std::string p2p_Delay, int mode, ui
         outputFile << "Server number = " << reciever_number << "\t";    
     }
 
-    outputFile << "flows = " << num_of_flows << "\t";
-    outputFile << "Throughput = " <<AvgThroughput << " Kbps\t";
-    outputFile << "Delay = " << Delay.GetSeconds()/ReceivedPackets << "\t";
-    outputFile << "time = " << simulation_stop_time << "\t";
-    outputFile << "packet loss = " << packet_loss_rate << std::endl;
+    // outputFile << "flows = " << num_of_flows << "\t";
+    // outputFile << "Throughput = " <<AvgThroughput << " Kbps\t";
+    // outputFile << "Delay = " << Delay.GetSeconds()/ReceivedPackets << "\t";
+    // outputFile << "time = " << simulation_stop_time << "\t";
+    // outputFile << "packet loss = " << packet_loss_rate << std::endl;
+
+    outputFile << AvgThroughput << "\t";
+    outputFile << Delay.GetSeconds()/ReceivedPackets << "\t";
+    outputFile << packet_loss_rate << std::endl;
 
     outputFile.close();
     //--------------here ends the writing into the output file implementation---------
@@ -775,6 +772,12 @@ int main(int argc, char *argv[])
     // runGit(4, "50Mbps", "10us", 0, 200, 0, 30, "500Mbps", 800); // GOOD!!!!!!!!
     // runGit(4, "50Mbps", "10us", 0, 200, 0, 30, "500Mbps", 1500); // WOW
     // runGit(4, "50Mbps", "10us", 0, 200, 0, 30, "500Mbps", 70); // Lot of time but OK
+
+    for (size_t i = 0; i < 16; i++)
+    {
+        runGit(4, "50Mbps", "10us", 0, 200, 0, 30, "500Mbps", 70); // Lot of time but OK
+    }
+    
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////
     
