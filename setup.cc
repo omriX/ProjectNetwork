@@ -104,6 +104,10 @@ std::ofstream cwndFile;
 // cwndFile("scratch/cwnd.txt", std::ios::out);
 void CwndTracer(uint32_t oldCwnd, uint32_t newCwnd) 
 {
+    if (newCwnd == 0 || newCwnd == 2000) {
+        return; // No change in congestion window, skip logging
+    }
+
     double time = Simulator::Now().GetSeconds(); // Get simulation time
 
     // cwndFile << std::fixed << std::setprecision(1) << Simulator::Now().GetSeconds() << "\t" << newCwnd << std::endl; // Write time and cwnd to file
@@ -245,7 +249,15 @@ void runGit(int k, std::string p2p_DataRate, std::string p2p_Delay, int mode, ui
     }
     else
     {
-        Config::SetDefault("ns3::TcpSocketState::EnablePacing",  BooleanValue(true));
+        if (protocolName == "TcpCubic")
+        {
+            Config::SetDefault("ns3::TcpSocketState::EnablePacing", BooleanValue(true));
+        }
+        else
+        {
+            Config::SetDefault("ns3::TcpSocketState::EnablePacing", BooleanValue(false));
+        }
+
         Config::SetDefault("ns3::TcpSocketState::MaxPacingRate", DataRateValue(DataRate("1Gb/s")));
     }
 
@@ -258,13 +270,16 @@ void runGit(int k, std::string p2p_DataRate, std::string p2p_Delay, int mode, ui
     //
     
     std::vector<NetDeviceContainer> link_vec;
+
+    // New:
+    Config::SetDefault("ns3::TcpSocket::InitialCwnd", UintegerValue(2));  // or 3
     
     Config::SetDefault("ns3::TcpL4Protocol::RecoveryType", StringValue("ns3::TcpClassicRecovery"));
 
     //tcp config 
     // Config::SetDefault("ns3::TcpSocket::SegmentSize", UintegerValue(1500));
     // NEW
-    Config::SetDefault("ns3::TcpSocket::SegmentSize", UintegerValue(1460));
+    Config::SetDefault("ns3::TcpSocket::SegmentSize", UintegerValue(app_packet_size));
 
     Config::SetDefault("ns3::TcpSocket::DelAckCount", UintegerValue(1)); // for two packets return one ack
     GlobalValue::Bind("ChecksumEnabled", BooleanValue(false));
@@ -287,21 +302,9 @@ void runGit(int k, std::string p2p_DataRate, std::string p2p_Delay, int mode, ui
     Config::SetDefault("ns3::RedQueueDisc::MaxSize", QueueSizeValue(QueueSize("2666p")));
     // DCTCP tracks instantaneous queue length only; so set QW = 1
     Config::SetDefault("ns3::RedQueueDisc::QW", DoubleValue(1));
-
-
-    // // in the paper they have said the min max should be equal
-    // Config::SetDefault("ns3::RedQueueDisc::MinTh", DoubleValue(threshold_k));
-    // Config::SetDefault("ns3::RedQueueDisc::MaxTh", DoubleValue(threshold_k));
-
-    //
-    if (protocolName == "TcpDctcp") {
-        Config::SetDefault("ns3::RedQueueDisc::MinTh", DoubleValue(20));
-        Config::SetDefault("ns3::RedQueueDisc::MaxTh", DoubleValue(20));
-    } else {
-        Config::SetDefault("ns3::RedQueueDisc::MinTh", DoubleValue(100));
-        Config::SetDefault("ns3::RedQueueDisc::MaxTh", DoubleValue(300));
-    }
-    //
+    // in the paper they have said the min max should be equal
+    Config::SetDefault("ns3::RedQueueDisc::MinTh", DoubleValue(threshold_k));
+    Config::SetDefault("ns3::RedQueueDisc::MaxTh", DoubleValue(threshold_k));
 
 
     TrafficControlHelper tchRed1;
@@ -493,6 +496,9 @@ void runGit(int k, std::string p2p_DataRate, std::string p2p_Delay, int mode, ui
     // All to last host
     if(mode == 0) 
     {
+        Config::SetDefault("ns3::TcpSocket::SegmentSize", UintegerValue(app_packet_size));
+        Config::SetDefault("ns3::RedQueueDisc::MeanPktSize", UintegerValue(app_packet_size));
+
         for (uint32_t i = 0; i < num_of_flows; ++i) 
         {
             uint16_t port = basePort + i;
@@ -747,15 +753,6 @@ int main(int argc, char *argv[])
 {
     int counter = 0;
     int protocolNumber = atoi(argv[1]);
-    // int sizeOp = atoi(argv[2]);
-    // int size = 1000;
-
-    // if (sizeOp == 0){
-    //     size = 70;
-    // }
-    // else if (sizeOp == 1){
-    //     size = 800;
-    // }
 
     SetTcpCongestionControl(protocolNumber);
 
@@ -769,14 +766,7 @@ int main(int argc, char *argv[])
         ecnFile.open("scratch/" + protocolName + "_ecn.txt", std::ios::out);
     }
 
-    // runGit(4, "50Mbps", "10us", 0, 200, 0, 30, "500Mbps", 800); // GOOD!!!!!!!!
-    // runGit(4, "50Mbps", "10us", 0, 200, 0, 30, "100Mbps", 800);
-
-    // runGit(4, "50Mbps", "10us", 0, 100, 0, 30, "50Mbps", 70);
-    runGit(4, "50Mbps", "10us", 0, 100, 0, 30, "50Mbps", 800);
-
-    
-    // runGit(4, "1Gbps", "10us", 0, 15, 2.0, 30, "60Mbps", 1000);
+    runGit(4, "50Mbps", "10us", 0, 75, 0, 30, "500Mbps", 1460);
     return 0;
 
     // runGit(4, "1Gbps", "10us", 1, 100, 0, 15, "100Mbps", 1000);
@@ -800,7 +790,13 @@ int main(int argc, char *argv[])
     // runGit(4, "50Mbps", "10us", 0, 200, 0, 30, "500Mbps", 800); // GOOD!!!!!!!!
     // runGit(4, "50Mbps", "10us", 0, 200, 0, 30, "500Mbps", 1500); // WOW
     // runGit(4, "50Mbps", "10us", 0, 200, 0, 30, "500Mbps", 70); // Lot of time but OK
+
+    for (size_t i = 0; i < 16; i++)
+    {
+        runGit(4, "50Mbps", "10us", 0, 200, 0, 30, "500Mbps", 70); // Lot of time but OK
+    }
     
+
     ///////////////////////////////////////////////////////////////////////////////////////////////////
     
                                         /* 1 */
@@ -810,12 +806,6 @@ int main(int argc, char *argv[])
     // runGit(4, "50Mbps", "10us", 1, 200, 0, 30, "500Mbps", 70); // Lot of time but OK
 
     // runGit(4, "40Mbps", "10us", 0, 200, 0, 30, "400Mbps", 700);  // Also good
-
-
-    for (size_t i = 0; i < 1; i++)
-    {
-        runGit(4, "50Mbps", "10us", 1, 200, 0, 30, "500Mbps", 70); // Lot of time but OK
-    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////
 
