@@ -265,14 +265,29 @@ void runGit(int k, std::string p2p_DataRate, std::string p2p_Delay, int mode, ui
     app_packet_size = app_packet_size - (rand() % 6);       // [size-5, size]
 
     //
-    bool enableSwitchEcn;
-    bool enable_swift;
+    // bool enableSwitchEcn;
+    // bool enable_swift;
     //
     
     std::vector<NetDeviceContainer> link_vec;
 
     // New:
-    Config::SetDefault("ns3::TcpSocket::InitialCwnd", UintegerValue(2));  // or 3
+    if (protocolName == "TcpNewReno")
+    {
+        // 1) Slightly larger IW so 3 dupACKs are achievable
+        Config::SetDefault("ns3::TcpSocket::InitialCwnd", UintegerValue(6)); // 4–6 is fine
+
+        // 2) Limited Transmit: retransmit on 1–2 dupACKs (helps tiny flights)
+        Config::SetDefault("ns3::TcpSocketBase::LimitedTransmit", BooleanValue(true));
+
+        // 3) (Optional) Lower dupACK threshold to 2 for NewReno-only runs
+        Config::SetDefault("ns3::TcpSocketBase::ReTxThreshold", UintegerValue(2));
+    }
+    else if (protocolName == "TcpCubic")
+    {
+        Config::SetDefault("ns3::TcpSocket::InitialCwnd", UintegerValue(2));  // or 3
+    }
+    
     
     Config::SetDefault("ns3::TcpL4Protocol::RecoveryType", StringValue("ns3::TcpClassicRecovery"));
 
@@ -751,7 +766,7 @@ void runGit(int k, std::string p2p_DataRate, std::string p2p_Delay, int mode, ui
 
 int main(int argc, char *argv[])
 {
-    int counter = 0;
+    // int counter = 0;
     int protocolNumber = atoi(argv[1]);
 
     SetTcpCongestionControl(protocolNumber);
@@ -766,7 +781,8 @@ int main(int argc, char *argv[])
         ecnFile.open("scratch/" + protocolName + "_ecn.txt", std::ios::out);
     }
 
-    runGit(4, "50Mbps", "10us", 0, 75, 0, 30, "500Mbps", 1460);
+    // runGit(4, "50Mbps", "10us", 0, 80, 0, 30, "500Mbps", 1460); // New-reno
+    runGit(4, "50Mbps", "10us", 0, 75, 0, 30, "500Mbps", 800); // Cubic
     return 0;
 
     // runGit(4, "1Gbps", "10us", 1, 100, 0, 15, "100Mbps", 1000);
