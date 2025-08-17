@@ -660,6 +660,59 @@ void runGit(int k, std::string p2p_DataRate, std::string p2p_Delay, int mode, ui
         }
     }
 
+    // All to specific host
+    else 
+    {
+        // 1, 5, 10
+        uint32_t reciever_number = 10 % hosts.GetN();
+
+        for (uint32_t i = 0; i < num_of_flows; ++i) 
+        {
+            uint16_t port = basePort + i;
+            if ((i % hosts.GetN()) == (reciever_number))
+            {
+                // Skipping the server.
+                continue;
+            }
+            Ptr<Node> sender = hosts.Get(i % hosts.GetN());
+            Ptr<Node> receiver = hosts.Get(reciever_number);
+
+            // Install PacketSink on the receiver
+            Address sinkAddress(InetSocketAddress(receiver->GetObject<Ipv4>()->GetAddress(1, 0).GetLocal(), port));
+            PacketSinkHelper sinkHelper("ns3::TcpSocketFactory", sinkAddress);
+            ApplicationContainer sinkApp = sinkHelper.Install(receiver);
+            sinkApp.Start(Seconds(1.0));
+            sinkApp.Stop(Seconds(simulation_stop_time));
+            sinkApps.push_back(sinkApp);
+
+            // Install BulkSendApplication on the sender
+            BulkSendHelper bulkSender("ns3::TcpSocketFactory", sinkAddress);
+            bulkSender.SetAttribute("MaxBytes", UintegerValue(0)); // unlimited
+            ApplicationContainer sourceApp = bulkSender.Install(sender);
+            sourceApp.Start(Seconds(2.0));
+            sourceApp.Stop(Seconds(simulation_stop_time - 1));
+
+            if (i == 0) { // Track the first window
+                Ptr<Application> app = sourceApp.Get(0);
+                Ptr<BulkSendApplication> bulkApp = DynamicCast<BulkSendApplication>(app);
+                if (bulkApp) {
+                    Simulator::Schedule(Seconds(2.01), [bulkApp]() {
+                        Ptr<Socket> bulkSocket = bulkApp->GetSocket();
+                        Ptr<TcpSocketBase> tcpSocketBase = DynamicCast<TcpSocketBase>(bulkSocket);
+                        if (tcpSocketBase) {
+                            std::cout << "[DEBUG] Attaching cwnd tracer to connection 0 (Sender Node " << bulkApp->GetNode()->GetId() << ")" << std::endl;
+                            Track_Flow(tcpSocketBase);  
+                        } else {
+                            std::cerr << "[ERROR] Could not cast BulkSend socket to TcpSocketBase!" << std::endl;
+                        }
+                    });
+                } else {
+                    std::cerr << "[ERROR] Could not retrieve BulkSendApplication instance!" << std::endl;
+                }
+            }
+        }
+    }
+
    
 //--------------------------flow monitor---------------------------
     int j=0;
@@ -781,8 +834,18 @@ int main(int argc, char *argv[])
         ecnFile.open("scratch/" + protocolName + "_ecn.txt", std::ios::out);
     }
 
+    // Mode 0: All to last host
     // runGit(4, "50Mbps", "10us", 0, 80, 0, 30, "500Mbps", 1460); // New-reno
-    runGit(4, "50Mbps", "10us", 0, 75, 0, 30, "500Mbps", 800); // Cubic
+    // runGit(4, "50Mbps", "10us", 0, 75, 0, 30, "500Mbps", 1460); // Cubic
+    // return 0;
+
+    // Mode 1: All to one random host
+    // runGit(4, "50Mbps", "10us", 1, 75, 0, 30, "500Mbps", 70); // New-reno
+    // runGit(4, "50Mbps", "10us", 1, 75, 0, 30, "500Mbps", 1460); // Cubic
+
+    // Mode __: All to one specific host
+    // runGit(4, "50Mbps", "10us", 10, 75, 0, 30, "500Mbps", 70); // New-reno
+    runGit(4, "50Mbps", "10us", 10, 75, 0, 30, "500Mbps", 70); // Cubic
     return 0;
 
     // runGit(4, "1Gbps", "10us", 1, 100, 0, 15, "100Mbps", 1000);
