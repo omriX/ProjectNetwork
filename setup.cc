@@ -664,7 +664,7 @@ void runGit(int k, std::string p2p_DataRate, std::string p2p_Delay, int mode, ui
     else 
     {
         // 1, 5, 10
-        uint32_t reciever_number = 10 % hosts.GetN();
+        uint32_t reciever_number = 5 % hosts.GetN();
 
         for (uint32_t i = 0; i < num_of_flows; ++i) 
         {
@@ -845,7 +845,7 @@ int main(int argc, char *argv[])
 
     // Mode __: All to one specific host
     // runGit(4, "50Mbps", "10us", 10, 75, 0, 30, "500Mbps", 70); // New-reno
-    runGit(4, "50Mbps", "10us", 10, 75, 0, 30, "500Mbps", 70); // Cubic
+    runGit(4, "50Mbps", "10us", 10, 75, 0, 30, "500Mbps", 1460); // Cubic
     return 0;
 
     // runGit(4, "1Gbps", "10us", 1, 100, 0, 15, "100Mbps", 1000);
